@@ -1,4 +1,4 @@
-# signalk-vesselOS
+# signalk-vesseloss
 
 Signal K plugin for VesselOS remote access management.
 
@@ -43,7 +43,7 @@ Restart Signal K after installation.
 
 ## REST Endpoints
 
-**POST** `/plugins/signalk-vesselOS/config`
+**POST** `/plugins/signalk-vesseloss/config`
 
 Receives tunnel token from VesselOS backend after subscription.
 
@@ -58,7 +58,7 @@ Response:
 
 ---
 
-**GET** `/plugins/signalk-vesselOS/status`
+**GET** `/plugins/signalk-vesseloss/status`
 
 Returns current tunnel status.
 
@@ -93,15 +93,15 @@ Once installed on the Cerbo GX, test the REST endpoints:
 
 ```bash
 # Check status (no token yet)
-curl http://192.168.1.155:3000/plugins/signalk-vesselOS/status
+curl http://192.168.1.155:3000/plugins/signalk-vesseloss/status
 
 # Push a tunnel token (triggers cloudflared download and tunnel start)
-curl -X POST http://192.168.1.155:3000/plugins/signalk-vesselOS/config \
+curl -X POST http://192.168.1.155:3000/plugins/signalk-vesseloss/config \
   -H "Content-Type: application/json" \
   -d '{"tunnelToken":"YOUR_CLOUDFLARE_TUNNEL_TOKEN"}'
 
 # Check status again (should show tunnelRunning: true within ~30 seconds)
-curl http://192.168.1.155:3000/plugins/signalk-vesselOS/status
+curl http://192.168.1.155:3000/plugins/signalk-vesseloss/status
 ```
 
 ## End-to-End Remote Access Test Flow
@@ -112,7 +112,7 @@ curl http://192.168.1.155:3000/plugins/signalk-vesselOS/status
    → Returns { tunnelToken, tunnelUrl: "wss://<vessel>.vessel-os.com" }
 
 2. Frontend pushes token to Cerbo plugin:
-   POST http://192.168.1.155:3000/plugins/signalk-vesselOS/config
+   POST http://192.168.1.155:3000/plugins/signalk-vesseloss/config
    { "tunnelToken": "..." }
 
 3. Plugin downloads cloudflared to /data/vesselOS/
