@@ -1,13 +1,18 @@
-const { execSync, spawn } = require('child_process');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
 
+// /data/ persists across Venus OS firmware updates
+// NOTE: /data/vesselOS/ must be created manually as root before first use:
+//   mkdir -p /data/vesselOS && chmod 777 /data/vesselOS
 const INSTALL_DIR = '/data/vesselOS';
 const BINARY_PATH = path.join(INSTALL_DIR, 'cloudflared');
 const TOKEN_PATH = path.join(INSTALL_DIR, 'tunnel-token');
-const RUNIT_DIR = '/etc/sv/vesselOS-tunnel';
-const RUNIT_LOG_DIR = '/etc/sv/vesselOS-tunnel/log';
+
+// Venus OS uses /service/ for runit services (not /etc/sv/)
+const RUNIT_DIR = '/service/vesselOS-tunnel';
+const RUNIT_LOG_DIR = '/service/vesselOS-tunnel/log';
 
 function getArchitecture() {
   try {
@@ -30,7 +35,12 @@ function getDownloadUrl() {
 async function downloadBinary(log) {
   return new Promise((resolve, reject) => {
     if (!fs.existsSync(INSTALL_DIR)) {
-      fs.mkdirSync(INSTALL_DIR, { recursive: true });
+      try {
+        fs.mkdirSync(INSTALL_DIR, { recursive: true });
+      } catch (err) {
+        log(`Warning: could not create ${INSTALL_DIR}: ${err.message}`);
+        log('Run as root: mkdir -p /data/vesselOS && chmod 777 /data/vesselOS');
+      }
     }
 
     if (fs.existsSync(BINARY_PATH)) {
@@ -123,14 +133,6 @@ exec svlogd -tt /var/log/vesselOS-tunnel
 
 function startTunnel(log) {
   try {
-    const currentDir = '/etc/runit/runsvdir/current';
-    const symlink = path.join(currentDir, 'vesselOS-tunnel');
-
-    if (fs.existsSync(currentDir) && !fs.existsSync(symlink)) {
-      fs.symlinkSync(RUNIT_DIR, symlink);
-      log('Enabled vesselOS-tunnel in runit');
-    }
-
     try {
       execSync('sv start vesselOS-tunnel', { stdio: 'pipe' });
       log('Tunnel started via sv');
@@ -168,8 +170,16 @@ function isTunnelRunning() {
 }
 
 function storeToken(token, log) {
+  // /data/vesselOS/ must already exist (created as root before first use)
+  // Signal K runs as a non-root user and cannot create /data/ subdirectories
   if (!fs.existsSync(INSTALL_DIR)) {
-    fs.mkdirSync(INSTALL_DIR, { recursive: true });
+    try {
+      fs.mkdirSync(INSTALL_DIR, { recursive: true });
+    } catch (err) {
+      log(`Warning: could not create ${INSTALL_DIR}: ${err.message}`);
+      log('Run as root: mkdir -p /data/vesselOS && chmod 777 /data/vesselOS');
+      // Do not throw — attempt to write token anyway in case dir appears later
+    }
   }
   fs.writeFileSync(TOKEN_PATH, token, 'utf8');
   fs.chmodSync(TOKEN_PATH, '600');
