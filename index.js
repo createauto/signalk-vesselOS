@@ -14,7 +14,10 @@ module.exports = function(app) {
       var running = tunnel.isTunnelRunning();
       res.json({ hasToken: hasToken, tunnelRunning: running, status: running ? 'active' : hasToken ? 'starting' : 'pending' });
     });
-    router.post('/config', function(req, res) {
+    // POST /plugins/signalk-vesseloss/activate
+    // Receives the tunnel token from VesselOS backend and starts the tunnel.
+    // Note: /config is reserved by Signal K for plugin configuration — use /activate instead.
+    router.post('/activate', function(req, res) {
       var tunnelToken = req.body && req.body.tunnelToken;
       if (!tunnelToken) return res.status(400).json({ error: 'tunnelToken required' });
       tunnel.storeToken(tunnelToken, function(m) { app.debug(m); });
