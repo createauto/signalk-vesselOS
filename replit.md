@@ -91,6 +91,17 @@ Generated Zod schemas from the OpenAPI spec (e.g. `HealthCheckResponse`). Used b
 
 Generated React Query hooks and fetch client from the OpenAPI spec (e.g. `useHealthCheck`, `healthCheck`).
 
+### `signalk-vesselOS` (Signal K Plugin)
+
+Standalone Signal K plugin — **not** a pnpm workspace package. Lives at `signalk-vesselOS/` in the repo root and is deployed directly to the Cerbo GX.
+
+- `index.js` — Plugin entry point; registers Signal K paths, status polling, and REST endpoints
+- `tunnel.js` — Cloudflared lifecycle: download, runit service creation, start/stop/status
+- `package.json` — Plugin manifest with `signalk-node-server-plugin` keyword for App Store
+- `README.md` — Full install, testing, and deployment guide
+
+Deploy by copying `signalk-vesselOS/` to `~/.signalk/node_modules/signalk-vesselOS/` on the Cerbo GX and restarting Signal K. No `npm install` needed (zero dependencies).
+
 ### `scripts` (`@workspace/scripts`)
 
 Utility scripts package. Each script is a `.ts` file in `src/` with a corresponding npm script in `package.json`. Run scripts via `pnpm --filter @workspace/scripts run <script>`. Scripts can import any workspace package (e.g., `@workspace/db`) by adding it as a dependency in `scripts/package.json`.
