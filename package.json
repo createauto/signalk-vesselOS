@@ -1,0 +1,15 @@
+{
+  "name": "signalk-vesselOS",
+  "version": "1.0.0",
+  "description": "VesselOS remote access tunnel manager for Signal K",
+  "keywords": ["signalk-node-server-plugin"],
+  "signalk-plugin-id": "signalk-vesselOS",
+  "signalk-plugin-name": "VesselOS Remote Access",
+  "signalk-plugin-description": "Manages Cloudflare tunnel for VesselOS remote access",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"No tests\" && exit 0"
+  },
+  "dependencies": {},
+  "license": "Apache-2.0"
+}
