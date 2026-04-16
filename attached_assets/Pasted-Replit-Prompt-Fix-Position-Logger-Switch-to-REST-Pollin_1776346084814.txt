@@ -1,0 +1,149 @@
+Replit Prompt — Fix Position Logger: Switch to REST Polling
+Target project: SignalK Vessel
+File: positionLogger.js (modify)
+Date: April 2026
+
+Problem
+app.streambundle.getSelfBus() is not firing on Venus OS / Cerbo GX even
+though navigation.position has a valid value in Signal K. The logger starts
+correctly but never receives position updates so the buffer file stays empty.
+Fix — Switch to REST API polling
+Instead of relying on streambundle push, poll the Signal K REST API directly
+on every tick. This is more reliable on Venus OS and removes the dependency
+on the subscription working correctly.
+Remove the onPosition method and all streambundle subscription code.
+Replace the _tick method to fetch position directly:
+javascriptasync _tick() {
+  try {
+    const pos = await this._fetchPosition();
+    if (!pos) return;
+
+    this.lastLat = pos.latitude;
+    this.lastLng = pos.longitude;
+
+    // Fetch SOG and COG separately
+    const sog = await this._fetchValue('navigation/speedOverGround');
+    const cog = await this._fetchValue('navigation/courseOverGroundTrue');
+
+    // Convert units: SOG m/s → knots, COG radians → degrees
+    this.lastSog = sog != null ? Math.round(sog * 1.94384 * 10) / 10 : 0;
+    this.lastCog = cog != null ? Math.round((cog * 180) / Math.PI) : 0;
+
+    this._updateTripState(this.lastSog);
+  } catch (err) {
+    console.error('[VesselOS] Position fetch error:', err.message);
+    return;
+  }
+
+  const row = {
+    t: Math.floor(Date.now() / 1000),
+    la: Math.round(this.lastLat * 1e6) / 1e6,
+    lo: Math.round(this.lastLng * 1e6) / 1e6,
+    sog: this.lastSog,
+    cog: this.lastCog,
+    syn: false,
+  };
+
+  try { this._appendToBuffer(row); }
+  catch (err) { console.error('[VesselOS] Buffer write error:', err.message); }
+
+  if (this.isTunnelActive()) {
+    this._flushToSupabase().catch(err =>
+      console.error('[VesselOS] Flush error:', err.message)
+    );
+  }
+
+  this._trimBuffer();
+}
+
+_fetchPosition() {
+  return new Promise((resolve) => {
+    const req = require('http').get(
+      'http://localhost:3000/signalk/v1/api/vessels/self/navigation/position',
+      (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            resolve(json.value || null);
+          } catch { resolve(null); }
+        });
+      }
+    );
+    req.on('error', () => resolve(null));
+    req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+  });
+}
+
+_fetchValue(path) {
+  return new Promise((resolve) => {
+    const req = require('http').get(
+      `http://localhost:3000/signalk/v1/api/vessels/self/${path}`,
+      (res) => {
+        let data = '';
+        res.on('data', c => data += c);
+        res.on('end', () => {
+          try {
+            const json = JSON.parse(data);
+            resolve(json.value != null ? json.value : null);
+          } catch { resolve(null); }
+        });
+      }
+    );
+    req.on('error', () => resolve(null));
+    req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+  });
+}
+Also update the constructor — remove these properties since they're no longer
+needed externally:
+
+Keep lastSog and lastCog as they're still used internally
+Remove lastLat and lastLng — now set inside _tick
+Set initial values: this.lastLat = null; this.lastLng = null; this.lastSog = 0; this.lastCog = 0;
+
+
+Update index.js — remove streambundle subscriptions
+In index.js, remove the three app.streambundle.getSelfBus() subscription
+blocks and the unsubscribes array entirely. The position logger now polls
+internally — index.js just needs to start and stop it:
+javascriptplugin.start = function(options) {
+  if (tunnel.getStoredToken()) {
+    app.setPluginStatus('Remote access enabled');
+  } else {
+    app.setPluginStatus('Awaiting activation');
+  }
+
+  const supabaseUrl = options.supabaseUrl || process.env.SUPABASE_URL;
+  const supabaseKey = options.supabaseKey || process.env.SUPABASE_ANON_KEY;
+  const vesselId    = options.vesselId    || 'boatholic';
+
+  if (supabaseUrl && supabaseKey) {
+    positionLogger = new PositionLogger(
+      supabaseUrl,
+      supabaseKey,
+      vesselId,
+      function() { return tunnel.isTunnelRunning(); }
+    );
+    positionLogger.start();
+  } else {
+    app.debug('[VesselOS] Position logger disabled — no Supabase config');
+  }
+};
+
+plugin.stop = function() {
+  if (positionLogger) {
+    positionLogger.stop();
+    positionLogger = null;
+  }
+};
+
+Push both files to GitHub then wget on Cerbo
+After pushing, on the Cerbo run:
+bashcd /data/conf/signalk/node_modules/signalk-vesseloss
+wget -O positionLogger.js https://raw.githubusercontent.com/createauto/signalk-vesselOS/main/positionLogger.js
+wget -O index.js https://raw.githubusercontent.com/createauto/signalk-vesselOS/main/index.js
+svc -d /service/signalk-server && sleep 3 && svc -u /service/signalk-server
+Then after 35 seconds:
+bashtail -f /data/vesselOS/positions.json
+Should show rows appearing every 30 seconds.

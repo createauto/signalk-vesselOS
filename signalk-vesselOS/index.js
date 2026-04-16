@@ -9,7 +9,6 @@ module.exports = function(app) {
   plugin.name = 'VesselOS Remote Access';
   plugin.description = 'Securely connects your vessel to the VesselOS platform';
 
-  const unsubscribes = [];
   let positionLogger = null;
 
   plugin.start = function(options) {
@@ -30,51 +29,13 @@ module.exports = function(app) {
         vesselId,
         function() { return tunnel.isTunnelRunning(); }
       );
-
-      unsubscribes.push(
-        app.streambundle.getSelfBus('navigation.position')
-          .onValue(function(val) {
-            if (val && val.latitude != null && val.longitude != null) {
-              positionLogger.onPosition(
-                val.latitude,
-                val.longitude,
-                positionLogger.lastSog,
-                positionLogger.lastCog
-              );
-            }
-          })
-      );
-
-      unsubscribes.push(
-        app.streambundle.getSelfBus('navigation.speedOverGround')
-          .onValue(function(val) {
-            if (val != null) {
-              positionLogger.lastSog = val * 1.94384;
-            }
-          })
-      );
-
-      unsubscribes.push(
-        app.streambundle.getSelfBus('navigation.courseOverGroundTrue')
-          .onValue(function(val) {
-            if (val != null) {
-              positionLogger.lastCog = (val * 180) / Math.PI;
-            }
-          })
-      );
-
       positionLogger.start();
     } else {
-      app.debug('[VesselOS] Position logger disabled — no Supabase config in plugin settings');
+      app.debug('[VesselOS] Position logger disabled — no Supabase config');
     }
   };
 
   plugin.stop = function() {
-    unsubscribes.forEach(function(unsub) {
-      if (typeof unsub === 'function') unsub();
-    });
-    unsubscribes.length = 0;
-
     if (positionLogger) {
       positionLogger.stop();
       positionLogger = null;

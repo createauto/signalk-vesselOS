@@ -30,14 +30,6 @@ class PositionLogger {
     this._ensureBufferFile();
   }
 
-  onPosition(lat, lng, sog, cog) {
-    this.lastLat = lat;
-    this.lastLng = lng;
-    this.lastSog = sog || 0;
-    this.lastCog = cog || 0;
-    this._updateTripState(this.lastSog);
-  }
-
   start() {
     if (this.intervalHandle) return;
     this.intervalHandle = setInterval(() => this._tick(), LOG_INTERVAL_MS);
@@ -52,15 +44,32 @@ class PositionLogger {
     console.log('[VesselOS] Position logger stopped');
   }
 
-  _tick() {
-    if (this.lastLat === null) return;
+  async _tick() {
+    try {
+      const pos = await this._fetchPosition();
+      if (!pos) return;
+
+      this.lastLat = pos.latitude;
+      this.lastLng = pos.longitude;
+
+      const sog = await this._fetchValue('navigation/speedOverGround');
+      const cog = await this._fetchValue('navigation/courseOverGroundTrue');
+
+      this.lastSog = sog != null ? Math.round(sog * 1.94384 * 10) / 10 : 0;
+      this.lastCog = cog != null ? Math.round((cog * 180) / Math.PI) : 0;
+
+      this._updateTripState(this.lastSog);
+    } catch (err) {
+      console.error('[VesselOS] Position fetch error:', err.message);
+      return;
+    }
 
     const row = {
       t: Math.floor(Date.now() / 1000),
       la: Math.round(this.lastLat * 1e6) / 1e6,
       lo: Math.round(this.lastLng * 1e6) / 1e6,
-      sog: Math.round(this.lastSog * 10) / 10,
-      cog: Math.round(this.lastCog),
+      sog: this.lastSog,
+      cog: this.lastCog,
       syn: false,
     };
 
@@ -74,6 +83,46 @@ class PositionLogger {
     }
 
     this._trimBuffer();
+  }
+
+  _fetchPosition() {
+    return new Promise((resolve) => {
+      const req = require('http').get(
+        'http://localhost:3000/signalk/v1/api/vessels/self/navigation/position',
+        (res) => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              resolve(json.value || null);
+            } catch { resolve(null); }
+          });
+        }
+      );
+      req.on('error', () => resolve(null));
+      req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+    });
+  }
+
+  _fetchValue(path) {
+    return new Promise((resolve) => {
+      const req = require('http').get(
+        `http://localhost:3000/signalk/v1/api/vessels/self/${path}`,
+        (res) => {
+          let data = '';
+          res.on('data', c => data += c);
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(data);
+              resolve(json.value != null ? json.value : null);
+            } catch { resolve(null); }
+          });
+        }
+      );
+      req.on('error', () => resolve(null));
+      req.setTimeout(5000, () => { req.destroy(); resolve(null); });
+    });
   }
 
   _updateTripState(sog) {
