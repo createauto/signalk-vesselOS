@@ -185,10 +185,23 @@ function getStoredToken() {
   return fs.readFileSync(TOKEN_PATH, 'utf8').trim();
 }
 
+function restartTunnel(log) {
+  try {
+    execSync('svc -d /service/vesselOS-tunnel', { stdio: 'pipe' });
+    setTimeout(function() {
+      execSync('svc -u /service/vesselOS-tunnel', { stdio: 'pipe' });
+      if (log) log('Tunnel restarted');
+    }, 2000);
+  } catch(e) {
+    if (log) log('Tunnel restart error: ' + e.message);
+  }
+}
+
 module.exports = {
   downloadBinary,
   createRunitService,
   startTunnel,
+  restartTunnel,
   stopTunnel,
   isTunnelRunning,
   storeToken,

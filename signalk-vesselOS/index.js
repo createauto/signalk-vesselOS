@@ -102,7 +102,7 @@ module.exports = function(app) {
           if (parsed.tunnelToken && parsed.tunnelToken !== currentToken) {
             app.debug('[VesselOS] New token received — applying');
             fs.writeFileSync(tokenFile, parsed.tunnelToken);
-            tunnel.startTunnel(function(m) { app.debug(m); });
+            tunnel.restartTunnel(function(m) { app.debug(m); });
             app.setPluginStatus('Remote access enabled');
           }
         } catch(e) { app.debug('[VesselOS] Poll parse error: ' + e.message); }
