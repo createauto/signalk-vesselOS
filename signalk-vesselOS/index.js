@@ -45,6 +45,36 @@ function getOrCreateDeviceId(app) {
   return deviceId;
 }
 
+function registerDevice(app, deviceId, serial) {
+  if (!deviceId || !serial) return;
+  var https = require('https');
+  var body = JSON.stringify({ device_id: deviceId, serial: serial });
+  var options = {
+    hostname: 'api.vessel-os.com',
+    path: '/api/vessels/register',
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Content-Length': Buffer.byteLength(body),
+    },
+  };
+  var req = https.request(options, function(res) {
+    var data = '';
+    res.on('data', function(chunk) { data += chunk; });
+    res.on('end', function() {
+      try {
+        var parsed = JSON.parse(data);
+        app.debug('[VesselOS] Register result: ' + JSON.stringify(parsed));
+      } catch(e) {}
+    });
+  });
+  req.on('error', function(e) {
+    app.debug('[VesselOS] Register error: ' + e.message);
+  });
+  req.write(body);
+  req.end();
+}
+
 module.exports = function(app) {
   const plugin = {};
   plugin.id = 'signalk-vesseloss';
@@ -82,6 +112,13 @@ module.exports = function(app) {
 
   plugin.start = function(options) {
     var cerboSerial = getOrCreateDeviceId(app);
+
+    var hostapdConf = '';
+    try { hostapdConf = require('fs').readFileSync('/run/hostapd.conf', 'utf8'); } catch(e) {}
+    var ssidMatch = hostapdConf.match(/^ssid=venus-(.+)$/m);
+    var hardwareSerial = ssidMatch ? ssidMatch[1] : null;
+
+    registerDevice(app, cerboSerial, hardwareSerial);
 
     if (tunnel.getStoredToken()) {
       app.setPluginStatus('Remote access enabled');
