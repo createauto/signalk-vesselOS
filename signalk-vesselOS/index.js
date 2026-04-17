@@ -127,8 +127,20 @@ module.exports = function(app) {
     }
 
     if (cerboSerial) {
-      pollForToken(cerboSerial);
-      setInterval(function() { pollForToken(cerboSerial); }, 60000);
+      var pollCount = 0;
+      var fastPollLimit = 24;
+
+      function schedulePoll() {
+        pollForToken(cerboSerial);
+        pollCount++;
+        if (pollCount < fastPollLimit) {
+          setTimeout(schedulePoll, 5000);
+        } else {
+          setInterval(function() { pollForToken(cerboSerial); }, 60000);
+        }
+      }
+
+      schedulePoll();
     }
 
     const supabaseUrl = options.supabaseUrl || process.env.SUPABASE_URL;
