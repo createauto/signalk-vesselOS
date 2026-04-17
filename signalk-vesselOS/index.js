@@ -86,12 +86,8 @@ module.exports = function(app) {
   function pollForToken(serial) {
     var fs = require('fs');
     var tokenFile = '/data/vesselOS/tunnel-token';
-    var currentToken = '';
-    try { currentToken = fs.readFileSync(tokenFile, 'utf8').trim(); } catch(e) {}
-
     var https = require('https');
     var url = 'https://api.vessel-os.com/api/vessels/token/' + encodeURIComponent(serial);
-    app.debug('[VesselOS] Polling token: ' + url);
 
     https.get(url, function(res) {
       var data = '';
@@ -99,13 +95,19 @@ module.exports = function(app) {
       res.on('end', function() {
         try {
           var parsed = JSON.parse(data);
-          if (parsed.tunnelToken && parsed.tunnelToken !== currentToken) {
-            app.debug('[VesselOS] New token received — applying');
-            fs.writeFileSync(tokenFile, parsed.tunnelToken);
-            tunnel.restartTunnel(function(m) { app.debug(m); });
-            app.setPluginStatus('Remote access enabled');
+          if (parsed.tunnelToken) {
+            var current = '';
+            try { current = fs.readFileSync(tokenFile, 'utf8').trim(); } catch(e) {}
+
+            if (parsed.tunnelToken !== current) {
+              app.debug('[VesselOS] New token — writing and restarting tunnel');
+              fs.writeFileSync(tokenFile, parsed.tunnelToken);
+              tunnel.restartTunnel(function(m) { app.debug(m); });
+            } else {
+              tunnel.startTunnel(function(m) {});
+            }
           }
-        } catch(e) { app.debug('[VesselOS] Poll parse error: ' + e.message); }
+        } catch(e) { app.debug('[VesselOS] Poll error: ' + e.message); }
       });
     }).on('error', function(e) { app.debug('[VesselOS] Poll error: ' + e.message); });
   }
