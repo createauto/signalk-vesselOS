@@ -11,11 +11,50 @@ module.exports = function(app) {
 
   let positionLogger = null;
 
+  function pollForToken(serial) {
+    var fs = require('fs');
+    var tokenFile = '/data/vesselOS/tunnel-token';
+    var currentToken = '';
+    try { currentToken = fs.readFileSync(tokenFile, 'utf8').trim(); } catch(e) {}
+
+    var https = require('https');
+    var url = 'https://api.vessel-os.com/api/vessels/token/' + encodeURIComponent(serial);
+    app.debug('[VesselOS] Polling token: ' + url);
+
+    https.get(url, function(res) {
+      var data = '';
+      res.on('data', function(chunk) { data += chunk; });
+      res.on('end', function() {
+        try {
+          var parsed = JSON.parse(data);
+          if (parsed.tunnelToken && parsed.tunnelToken !== currentToken) {
+            app.debug('[VesselOS] New token received — applying');
+            fs.writeFileSync(tokenFile, parsed.tunnelToken);
+            tunnel.startTunnel(function(m) { app.debug(m); });
+            app.setPluginStatus('Remote access enabled');
+          }
+        } catch(e) { app.debug('[VesselOS] Poll parse error: ' + e.message); }
+      });
+    }).on('error', function(e) { app.debug('[VesselOS] Poll error: ' + e.message); });
+  }
+
   plugin.start = function(options) {
+    // Read Cerbo serial from hostapd config
+    var hostapdConf = '';
+    try { hostapdConf = require('fs').readFileSync('/run/hostapd.conf', 'utf8'); } catch(e) {}
+    var ssidMatch = hostapdConf.match(/^ssid=venus-(.+)$/m);
+    var cerboSerial = ssidMatch ? ssidMatch[1] : null;
+
     if (tunnel.getStoredToken()) {
       app.setPluginStatus('Remote access enabled');
     } else {
       app.setPluginStatus('Awaiting activation');
+    }
+
+    // Poll for tunnel token immediately and every 60 seconds
+    if (cerboSerial) {
+      pollForToken(cerboSerial);
+      setInterval(function() { pollForToken(cerboSerial); }, 60000);
     }
 
     const supabaseUrl = options.supabaseUrl || process.env.SUPABASE_URL;
