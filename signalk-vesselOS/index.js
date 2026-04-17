@@ -3,6 +3,48 @@
 const tunnel = require('./tunnel');
 const { PositionLogger } = require('./positionLogger');
 
+function getOrCreateDeviceId(app) {
+  var fs = require('fs');
+  var deviceIdFile = '/data/vesselOS/device-id';
+
+  try {
+    var existing = fs.readFileSync(deviceIdFile, 'utf8').trim();
+    if (existing && existing.startsWith('VSOS-')) {
+      app.debug('[VesselOS] Using existing device ID: ' + existing);
+      return existing;
+    }
+  } catch(e) {}
+
+  var mac = null;
+  var interfaces = ['eth0', 'wlan0', 'wifi0', 'ap0'];
+  for (var i = 0; i < interfaces.length; i++) {
+    try {
+      var addr = fs.readFileSync('/sys/class/net/' + interfaces[i] + '/address', 'utf8').trim();
+      if (addr && addr !== '00:00:00:00:00:00' && addr !== '') {
+        mac = addr.replace(/:/g, '');
+        app.debug('[VesselOS] Using MAC from ' + interfaces[i] + ': ' + mac);
+        break;
+      }
+    } catch(e) {}
+  }
+
+  if (!mac) {
+    mac = require('crypto').randomBytes(6).toString('hex');
+    app.debug('[VesselOS] No MAC found, using random: ' + mac);
+  }
+
+  var deviceId = 'VSOS-' + mac;
+
+  try {
+    fs.writeFileSync(deviceIdFile, deviceId);
+    app.debug('[VesselOS] Generated device ID: ' + deviceId);
+  } catch(e) {
+    app.debug('[VesselOS] Could not write device ID: ' + e.message);
+  }
+
+  return deviceId;
+}
+
 module.exports = function(app) {
   const plugin = {};
   plugin.id = 'signalk-vesseloss';
@@ -39,11 +81,7 @@ module.exports = function(app) {
   }
 
   plugin.start = function(options) {
-    // Read Cerbo serial from hostapd config
-    var hostapdConf = '';
-    try { hostapdConf = require('fs').readFileSync('/run/hostapd.conf', 'utf8'); } catch(e) {}
-    var ssidMatch = hostapdConf.match(/^ssid=venus-(.+)$/m);
-    var cerboSerial = ssidMatch ? ssidMatch[1] : null;
+    var cerboSerial = getOrCreateDeviceId(app);
 
     if (tunnel.getStoredToken()) {
       app.setPluginStatus('Remote access enabled');
@@ -51,7 +89,6 @@ module.exports = function(app) {
       app.setPluginStatus('Awaiting activation');
     }
 
-    // Poll for tunnel token immediately and every 60 seconds
     if (cerboSerial) {
       pollForToken(cerboSerial);
       setInterval(function() { pollForToken(cerboSerial); }, 60000);
