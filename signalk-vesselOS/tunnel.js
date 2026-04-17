@@ -108,15 +108,9 @@ function createRunitService(log) {
     fs.mkdirSync(RUNIT_LOG_DIR, { recursive: true });
   }
 
-  if (!fs.existsSync(TOKEN_PATH)) {
-    log('No tunnel token stored — skipping runit service creation');
-    return false;
-  }
-
-  const token = fs.readFileSync(TOKEN_PATH, 'utf8').trim();
-
   const runScript = `#!/bin/sh
-exec ${BINARY_PATH} tunnel --no-autoupdate run --token ${token} 2>&1
+TOKEN=$(cat ${TOKEN_PATH})
+exec ${BINARY_PATH} tunnel --no-autoupdate run --token "$TOKEN" 2>&1
 `;
   fs.writeFileSync(path.join(RUNIT_DIR, 'run'), runScript);
   fs.chmodSync(path.join(RUNIT_DIR, 'run'), '755');
