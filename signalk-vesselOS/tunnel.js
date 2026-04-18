@@ -125,6 +125,36 @@ exec svlogd -tt /var/log/vesselOS-tunnel
   return true;
 }
 
+function createTokenWatcher(log) {
+  var fs = require('fs');
+  var watcherPath = '/service/vesselOS-token-watcher';
+  var runScript = '#!/bin/sh\n' +
+    'LAST=""\n' +
+    'TOKEN_FILE="/data/vesselOS/tunnel-token"\n' +
+    'while true; do\n' +
+    '  CURRENT=$(cat "$TOKEN_FILE" 2>/dev/null)\n' +
+    '  if [ -n "$CURRENT" ] && [ "$CURRENT" != "$LAST" ]; then\n' +
+    '    LAST="$CURRENT"\n' +
+    '    echo "Token changed - restarting tunnel"\n' +
+    '    svc -d /service/vesselOS-tunnel\n' +
+    '    sleep 2\n' +
+    '    svc -u /service/vesselOS-tunnel\n' +
+    '  fi\n' +
+    '  sleep 5\n' +
+    'done\n';
+
+  try {
+    if (!fs.existsSync(watcherPath)) {
+      fs.mkdirSync(watcherPath, { recursive: true });
+    }
+    fs.writeFileSync(watcherPath + '/run', runScript, { mode: 0o755 });
+    execSync('svc -u ' + watcherPath, { stdio: 'pipe' });
+    if (log) log('Token watcher service created and started');
+  } catch(e) {
+    if (log) log('Token watcher setup error: ' + e.message);
+  }
+}
+
 function startTunnel(log) {
   try {
     try {
@@ -200,6 +230,7 @@ function restartTunnel(log) {
 module.exports = {
   downloadBinary,
   createRunitService,
+  createTokenWatcher,
   startTunnel,
   restartTunnel,
   stopTunnel,

@@ -188,6 +188,7 @@ module.exports = function(app) {
       tunnel.downloadBinary(function(m) { app.debug(m); })
         .then(function() {
           tunnel.createRunitService(function(m) { app.debug(m); });
+          tunnel.createTokenWatcher(function(m) { app.debug(m); });
           tunnel.startTunnel(function(m) { app.debug(m); });
           app.setPluginStatus('Remote access enabled');
         })
