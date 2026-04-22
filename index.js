@@ -129,6 +129,8 @@ module.exports = function(app) {
     }
 
     tunnel.createTokenWatcher(function(m) { app.debug(m); });
+    tunnel.createRunitService(function(m) { app.debug(m); });
+    tunnel.startTunnel(function(m) { app.debug(m); });
 
     if (cerboSerial) {
       var pollCount = 0;
