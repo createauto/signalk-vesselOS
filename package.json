@@ -1,19 +1,12 @@
 {
-  "name": "workspace",
-  "version": "0.0.0",
-  "license": "MIT",
-  "scripts": {
-    "preinstall": "sh -c 'rm -f package-lock.json yarn.lock; case \"$npm_config_user_agent\" in pnpm/*) ;; *) echo \"Use pnpm instead\" >&2; exit 1 ;; esac'",
-    "build": "pnpm run typecheck && pnpm -r --if-present run build",
-    "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
-  },
-  "private": true,
-  "devDependencies": {
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
-  },
-  "dependencies": {
-    "@replit/connectors-sdk": "^0.3.0"
-  }
+  "name": "signalk-vesseloss",
+  "version": "1.0.0",
+  "description": "VesselOS remote access tunnel manager for Signal K",
+  "keywords": ["signalk-node-server-plugin"],
+  "signalk-plugin-id": "signalk-vesseloss",
+  "signalk-plugin-name": "VesselOS Remote Access",
+  "signalk-plugin-description": "Manages Cloudflare tunnel for VesselOS remote access",
+  "main": "index.js",
+  "dependencies": {},
+  "license": "Apache-2.0"
 }
