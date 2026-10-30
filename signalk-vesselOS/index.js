@@ -45,10 +45,34 @@ function getOrCreateDeviceId(app) {
   return deviceId;
 }
 
-function registerDevice(app, deviceId, serial) {
+function getOrCreateDeviceSecret(app) {
+  var fs = require('fs');
+  var secretFile = '/data/vesselOS/device-secret';
+  var existing = '';
+
+  try {
+    existing = fs.readFileSync(secretFile, 'utf8').trim();
+  } catch(e) {
+    if (e.code !== 'ENOENT') throw e;
+  }
+
+  if (existing.length >= 64) {
+    app.debug('[VesselOS] Device secret loaded');
+    return existing;
+  }
+
+  var secret = require('crypto').randomBytes(32).toString('hex');
+  fs.mkdirSync('/data/vesselOS', { recursive: true });
+  fs.writeFileSync(secretFile, secret, { mode: 0o600 });
+  fs.chmodSync(secretFile, 0o600);
+  app.debug('[VesselOS] Device secret created');
+  return secret;
+}
+
+function registerDevice(app, deviceId, serial, deviceSecret) {
   if (!deviceId || !serial) return;
   var https = require('https');
-  var body = JSON.stringify({ device_id: deviceId, serial: serial });
+  var body = JSON.stringify({ device_id: deviceId, serial: serial, device_secret: deviceSecret });
   var options = {
     hostname: 'api.vessel-os.com',
     path: '/api/vessels/register',
@@ -64,7 +88,7 @@ function registerDevice(app, deviceId, serial) {
     res.on('end', function() {
       try {
         var parsed = JSON.parse(data);
-        app.debug('[VesselOS] Register result: ' + JSON.stringify(parsed));
+        app.debug('[VesselOS] Register response received (HTTP ' + res.statusCode + ')');
       } catch(e) {}
     });
   });
@@ -83,13 +107,22 @@ module.exports = function(app) {
 
   let positionLogger = null;
 
-  function pollForToken(serial) {
+  function pollForToken(serial, deviceSecret) {
     var fs = require('fs');
     var tokenFile = '/data/vesselOS/tunnel-token';
     var https = require('https');
-    var url = 'https://api.vessel-os.com/api/vessels/token/' + encodeURIComponent(serial);
+    var options = {
+      hostname: 'api.vessel-os.com',
+      path: '/api/vessels/token/' + encodeURIComponent(serial),
+      headers: { 'X-Device-Secret': deviceSecret }
+    };
 
-    https.get(url, function(res) {
+    https.get(options, function(res) {
+      if (res.statusCode === 401) {
+        app.debug('[VesselOS] Token request rejected (401) — device secret mismatch');
+        res.resume();
+        return;
+      }
       var data = '';
       res.on('data', function(chunk) { data += chunk; });
       res.on('end', function() {
@@ -114,13 +147,14 @@ module.exports = function(app) {
 
   plugin.start = function(options) {
     var cerboSerial = getOrCreateDeviceId(app);
+    var deviceSecret = getOrCreateDeviceSecret(app);
 
     var hostapdConf = '';
     try { hostapdConf = require('fs').readFileSync('/run/hostapd.conf', 'utf8'); } catch(e) {}
     var ssidMatch = hostapdConf.match(/^ssid=venus-(.+)$/m);
     var hardwareSerial = ssidMatch ? ssidMatch[1] : null;
 
-    registerDevice(app, cerboSerial, hardwareSerial);
+    registerDevice(app, cerboSerial, hardwareSerial, deviceSecret);
 
     if (tunnel.getStoredToken()) {
       app.setPluginStatus('Remote access enabled');
@@ -128,17 +162,21 @@ module.exports = function(app) {
       app.setPluginStatus('Awaiting activation');
     }
 
+    tunnel.createTokenWatcher(function(m) { app.debug(m); });
+    tunnel.createRunitService(function(m) { app.debug(m); });
+    tunnel.startTunnel(function(m) { app.debug(m); });
+
     if (cerboSerial) {
       var pollCount = 0;
       var fastPollLimit = 24;
 
       function schedulePoll() {
-        pollForToken(cerboSerial);
+        pollForToken(cerboSerial, deviceSecret);
         pollCount++;
         if (pollCount < fastPollLimit) {
           setTimeout(schedulePoll, 5000);
         } else {
-          setInterval(function() { pollForToken(cerboSerial); }, 60000);
+          setInterval(function() { pollForToken(cerboSerial, deviceSecret); }, 60000);
         }
       }
 
